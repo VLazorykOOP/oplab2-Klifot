@@ -3,6 +3,9 @@
 #include <cstdlib>  // для std::rand() і std::srand()
 #include <ctime>    // для std::time()
 #include <cmath>    // для std::cos() і std::sin()
+#include <thread>   // для std::thread
+#include <mutex>    // для std::mutex
+#include <chrono>   // для std::chrono::milliseconds
 
 const int WIDTH = 800;
 const int HEIGHT = 600;
@@ -20,6 +23,7 @@ private:
     double speed;
     double direction;
     double timeToChangeDirection;
+    mutable std::mutex mtx;
 
 public:
     RegularRabbit(double speed, double initialX, double initialY)
@@ -34,6 +38,7 @@ public:
     }
 
     void move(double dt) override {
+        std::lock_guard<std::mutex> lock(mtx);
         if (timeToChangeDirection <= 0) {
             changeDirection();
         }
@@ -50,6 +55,7 @@ public:
     }
 
     void printPosition() const override {
+        std::lock_guard<std::mutex> lock(mtx);
         std::cout << "Regular Rabbit Position: (" << x << ", " << y << ")\n";
     }
 };
@@ -58,21 +64,32 @@ class AlbinoRabbit : public Rabbit {
 private:
     double x;
     double speed;
+    mutable std::mutex mtx;
 
 public:
     AlbinoRabbit(double speed, double initialX)
         : speed(speed), x(initialX) {}
 
     void move(double dt) override {
+        std::lock_guard<std::mutex> lock(mtx);
         x += speed * dt;
         if (x < 0) x += WIDTH;
         if (x >= WIDTH) x -= WIDTH;
     }
 
     void printPosition() const override {
+        std::lock_guard<std::mutex> lock(mtx);
         std::cout << "Albino Rabbit Position: (" << x << ", " << HEIGHT / 2 << ")\n";
     }
 };
+
+void simulateRabbit(Rabbit& rabbit, double simulationTime, double dt) {
+    for (double t = 0; t < simulationTime; t += dt) {
+        rabbit.move(dt);
+        rabbit.printPosition();
+        std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(dt * 1000)));
+    }
+}
 
 int main() {
     double V = 50;  // швидкість
@@ -84,13 +101,13 @@ int main() {
     double simulationTime = 20.0;  // час симуляції в секундах
     double dt = 0.1;               // крок часу в секундах
 
-    for (double t = 0; t < simulationTime; t += dt) {
-        regularRabbit.move(dt);
-        albinoRabbit.move(dt);
+    // Запуск симуляції в окремих потоках
+    std::thread regularRabbitThread(simulateRabbit, std::ref(regularRabbit), simulationTime, dt);
+    std::thread albinoRabbitThread(simulateRabbit, std::ref(albinoRabbit), simulationTime, dt);
 
-        regularRabbit.printPosition();
-        albinoRabbit.printPosition();
-    }
+    // Очікування завершення потоків
+    regularRabbitThread.join();
+    albinoRabbitThread.join();
 
     return 0;
 }
